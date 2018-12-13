@@ -14,9 +14,10 @@
 
 syntax = "proto3";
 
-import "cartographer/transform/proto/transform.proto";
-
 package cartographer.mapping.proto;
+
+import "cartographer/transform/proto/transform.proto";
+import "cartographer/mapping/proto/serialization.proto";
 
 message SubmapList {
   message SubmapEntry {
@@ -66,6 +67,21 @@ message SubmapQuery {
 
     // Error message in response to malformed requests.
     string error_message = 8;
+  }
+
+  Request request = 1;
+  Response response = 2;
+}
+
+message SubmapDataQuery {
+  message Request {
+    int32 submap_index = 1;
+    int32 trajectory_id = 2;
+  }
+
+  message Response {
+    Submap submap = 1;
+    transform.proto.Rigid3d pose = 2;
   }
 
   Request request = 1;

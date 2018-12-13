@@ -29,6 +29,7 @@
 #include "cartographer/cloud/internal/handlers/get_landmark_poses_handler.h"
 #include "cartographer/cloud/internal/handlers/get_local_to_global_transform_handler.h"
 #include "cartographer/cloud/internal/handlers/get_submap_handler.h"
+#include "cartographer/cloud/internal/handlers/get_submap_data_handler.h"
 #include "cartographer/cloud/internal/handlers/get_trajectory_node_poses_handler.h"
 #include "cartographer/cloud/internal/handlers/is_trajectory_finished_handler.h"
 #include "cartographer/cloud/internal/handlers/is_trajectory_frozen_handler.h"
@@ -78,6 +79,7 @@ MapBuilderServer::MapBuilderServer(
       .RegisterHandler<handlers::ReceiveGlobalSlamOptimizationsHandler>();
   server_builder.RegisterHandler<handlers::ReceiveLocalSlamResultsHandler>();
   server_builder.RegisterHandler<handlers::GetSubmapHandler>();
+  server_builder.RegisterHandler<handlers::GetSubmapDataHandler>();
   server_builder.RegisterHandler<handlers::GetTrajectoryNodePosesHandler>();
   server_builder.RegisterHandler<handlers::GetLandmarkPosesHandler>();
   server_builder.RegisterHandler<handlers::GetAllSubmapPosesHandler>();

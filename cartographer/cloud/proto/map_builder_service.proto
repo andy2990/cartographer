@@ -125,6 +125,10 @@ message GetSubmapRequest {
   cartographer.mapping.proto.SubmapId submap_id = 1;
 }
 
+message GetSubmapDataRequest {
+  cartographer.mapping.proto.SubmapId submap_id = 1;
+}
+
 message LoadStateRequest {
   oneof state_chunk {
     cartographer.mapping.proto.PoseGraph pose_graph = 1;
@@ -136,6 +140,11 @@ message LoadStateRequest {
 
 message GetSubmapResponse {
   cartographer.mapping.proto.SubmapQuery.Response submap_query_response = 1;
+  string error_msg = 2;
+}
+
+message GetSubmapDataResponse {
+  cartographer.mapping.proto.SubmapDataQuery.Response submap_data_query_response = 1;
   string error_msg = 2;
 }
 
@@ -249,6 +258,9 @@ service MapBuilderService {
 
   // Retrieves a single submap.
   rpc GetSubmap(GetSubmapRequest) returns (GetSubmapResponse);
+
+  // Retrieves the GRID data of a single submap
+  rpc GetSubmapData(GetSubmapDataRequest) returns (GetSubmapDataResponse);
 
   // Returns the current optimized trajectory poses.
   rpc GetTrajectoryNodePoses(google.protobuf.Empty)
