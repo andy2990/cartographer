@@ -41,6 +41,8 @@ void AddTrajectoryHandler::OnRequest(
           .AddTrajectoryBuilder(expected_sensor_ids,
                                 request.trajectory_builder_options(),
                                 local_slam_result_callback);
+  GetContext<MapBuilderContextInterface>()->RegisterClientIdForTrajectory(
+      request.client_id(), trajectory_id);
   if (GetUnsynchronizedContext<MapBuilderContextInterface>()
           ->local_trajectory_uploader()) {
     auto trajectory_builder_options = request.trajectory_builder_options();
@@ -55,10 +57,15 @@ void AddTrajectoryHandler::OnRequest(
     // freeze the trajectory on the server.
     trajectory_builder_options.set_pure_localization(false);
 
-    GetContext<MapBuilderContextInterface>()
-        ->local_trajectory_uploader()
-        ->AddTrajectory(trajectory_id, expected_sensor_ids,
-                        trajectory_builder_options);
+    auto status =
+        GetContext<MapBuilderContextInterface>()
+            ->local_trajectory_uploader()
+            ->AddTrajectory(request.client_id(), trajectory_id,
+                            expected_sensor_ids, trajectory_builder_options);
+    if (!status.ok()) {
+      LOG(ERROR) << "Failed to create trajectory_id " << trajectory_id
+                 << " in uplink. Error: " << status.error_message();
+    }
   }
 
   auto response = common::make_unique<proto::AddTrajectoryResponse>();

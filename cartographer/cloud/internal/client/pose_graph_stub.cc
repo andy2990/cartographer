@@ -38,21 +38,20 @@ namespace cartographer
 namespace cloud
 {
 
-PoseGraphStub::PoseGraphStub(std::shared_ptr<::grpc::Channel> client_channel)
-    : client_channel_(client_channel) {}
+PoseGraphStub::PoseGraphStub(std::shared_ptr<::grpc::Channel> client_channel,
+                             const std::string& client_id)
+    : client_channel_(client_channel), client_id_(client_id) {}
 
-void PoseGraphStub::RunFinalOptimization()
-{
-    google::protobuf::Empty request;
-    async_grpc::Client<handlers::RunFinalOptimizationSignature> client(
-        client_channel_);
-    CHECK(client.Write(request));
+void PoseGraphStub::RunFinalOptimization() {
+  google::protobuf::Empty request;
+  async_grpc::Client<handlers::RunFinalOptimizationSignature> client(
+      client_channel_);
+  CHECK(client.Write(request));
 }
 
 mapping::MapById<mapping::SubmapId, mapping::PoseGraphInterface::SubmapData>
-PoseGraphStub::GetAllSubmapData() const
-{
-    LOG(FATAL) << "Not implemented";
+PoseGraphStub::GetAllSubmapData() const {
+  LOG(FATAL) << "Not implemented";
 }
 
 mapping::PoseGraphInterface::SubmapData PoseGraphStub::GetSubmapData(const mapping::SubmapId &submap_id) const
@@ -181,36 +180,41 @@ void PoseGraphStub::SetLandmarkPose(const std::string &landmark_id,
 bool PoseGraphStub::IsTrajectoryFinished(int trajectory_id) const
 {
     proto::IsTrajectoryFinishedRequest request;
-    request.set_trajectory_id(trajectory_id);
-    async_grpc::Client<handlers::IsTrajectoryFinishedSignature> client(
-        client_channel_);
-    CHECK(client.Write(request));
-    return client.response().is_finished();
+  request.set_trajectory_id(trajectory_id);
+  async_grpc::Client<handlers::IsTrajectoryFinishedSignature> client(
+      client_channel_);
+  ::grpc::Status status;
+  CHECK(client.Write(request, &status))
+      << "Failed to check if trajectory " << trajectory_id
+      << " is finished: " << status.error_message();
+  return client.response().is_finished();
 }
 
-bool PoseGraphStub::IsTrajectoryFrozen(int trajectory_id) const
-{
-    proto::IsTrajectoryFrozenRequest request;
-    request.set_trajectory_id(trajectory_id);
-    async_grpc::Client<handlers::IsTrajectoryFrozenSignature> client(
-        client_channel_);
-    CHECK(client.Write(request));
-    return client.response().is_frozen();
+bool PoseGraphStub::IsTrajectoryFrozen(int trajectory_id) const {
+  proto::IsTrajectoryFrozenRequest request;
+  request.set_trajectory_id(trajectory_id);
+  async_grpc::Client<handlers::IsTrajectoryFrozenSignature> client(
+      client_channel_);
+  ::grpc::Status status;
+  CHECK(client.Write(request, &status))
+      << "Failed to check if trajectory " << trajectory_id
+      << " is frozen: " << status.error_message();
+  return client.response().is_frozen();
 }
 
 std::map<int, mapping::PoseGraphInterface::TrajectoryData>
-PoseGraphStub::GetTrajectoryData() const
-{
-    LOG(FATAL) << "Not implemented";
+PoseGraphStub::GetTrajectoryData() const {
+  LOG(FATAL) << "Not implemented";
 }
 
 std::vector<mapping::PoseGraphInterface::Constraint>
-PoseGraphStub::constraints() const
-{
-    google::protobuf::Empty request;
-    async_grpc::Client<handlers::GetConstraintsSignature> client(client_channel_);
-    CHECK(client.Write(request));
-    return mapping::FromProto(client.response().constraints());
+PoseGraphStub::constraints() const {
+  google::protobuf::Empty request;
+  async_grpc::Client<handlers::GetConstraintsSignature> client(client_channel_);
+  ::grpc::Status status;
+  CHECK(client.Write(request, &status))
+      << "Failed to get constraints: " << status.error_message();
+  return mapping::FromProto(client.response().constraints());
 }
 
 mapping::proto::PoseGraph PoseGraphStub::ToProto() const

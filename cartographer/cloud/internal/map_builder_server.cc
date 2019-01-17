@@ -47,6 +47,7 @@ namespace cloud {
 namespace {
 
 static auto* kIncomingDataQueueMetric = metrics::Gauge::Null();
+constexpr int kMaxMessageSize = 100 * 1024 * 1024;  // 100 MB
 const common::Duration kPopTimeout = common::FromMilliseconds(100);
 
 }  // namespace
@@ -61,11 +62,14 @@ MapBuilderServer::MapBuilderServer(
       map_builder_server_options.num_grpc_threads());
   server_builder.SetNumEventThreads(
       map_builder_server_options.num_event_threads());
+  server_builder.SetMaxSendMessageSize(kMaxMessageSize);
+  server_builder.SetMaxReceiveMessageSize(kMaxMessageSize);
   if (!map_builder_server_options.uplink_server_address().empty()) {
     local_trajectory_uploader_ = CreateLocalTrajectoryUploader(
         map_builder_server_options.uplink_server_address(),
         map_builder_server_options.upload_batch_size(),
-        map_builder_server_options.enable_ssl_encryption());
+        map_builder_server_options.enable_ssl_encryption(),
+        map_builder_server_options.enable_google_auth());
   }
   server_builder.RegisterHandler<handlers::AddTrajectoryHandler>();
   server_builder.RegisterHandler<handlers::AddOdometryDataHandler>();
@@ -105,8 +109,11 @@ MapBuilderServer::MapBuilderServer(
         << "Set either use_trajectory_builder_2d or use_trajectory_builder_3d";
   }
   map_builder_->pose_graph()->SetGlobalSlamOptimizationCallback(
-      std::bind(&MapBuilderServer::OnGlobalSlamOptimizations, this,
-                std::placeholders::_1, std::placeholders::_2));
+      [this](const std::map<int, mapping::SubmapId>& last_optimized_submap_ids,
+             const std::map<int, mapping::NodeId>& last_optimized_node_ids) {
+        OnGlobalSlamOptimizations(last_optimized_submap_ids,
+                                  last_optimized_node_ids);
+      });
 }
 
 void MapBuilderServer::Start() {
@@ -163,8 +170,8 @@ void MapBuilderServer::StartSlamThread() {
 }
 
 void MapBuilderServer::OnLocalSlamResult(
-    int trajectory_id, common::Time time, transform::Rigid3d local_pose,
-    sensor::RangeData range_data,
+    int trajectory_id, const std::string client_id, common::Time time,
+    transform::Rigid3d local_pose, sensor::RangeData range_data,
     std::unique_ptr<const mapping::TrajectoryBuilderInterface::InsertionResult>
         insertion_result) {
   auto shared_range_data =
@@ -180,8 +187,8 @@ void MapBuilderServer::OnLocalSlamResult(
         grpc_server_->GetUnsynchronizedContext<MapBuilderContextInterface>()
             ->local_trajectory_uploader()
             ->GetLocalSlamResultSensorId(trajectory_id);
-    CreateSensorDataForLocalSlamResult(sensor_id.id, trajectory_id, time,
-                                       starting_submap_index_,
+    CreateSensorDataForLocalSlamResult(sensor_id.id, trajectory_id, client_id, 
+                                       time, starting_submap_index_,
                                        *insertion_result, sensor_data.get());
     // TODO(cschuet): Make this more robust.
     if (insertion_result->insertion_submaps.front()->finished()) {
