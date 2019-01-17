@@ -35,8 +35,17 @@ namespace {
 
 using common::make_unique;
 
-constexpr int kConnectionTimeoutInSecond = 10;
+constexpr int kConnectionTimeoutInSeconds = 10;
+constexpr int kConnectionRecoveryTimeoutInSeconds = 60;
+constexpr int kTokenRefreshIntervalInSeconds = 60;
 const common::Duration kPopTimeout = common::FromMilliseconds(100);
+
+const std::set<::grpc::StatusCode> kUnrecoverableStatusCodes = {
+    ::grpc::DEADLINE_EXCEEDED,
+    ::grpc::NOT_FOUND,
+    ::grpc::UNAVAILABLE,
+    ::grpc::UNKNOWN,
+};
 
 class LocalTrajectoryUploader : public LocalTrajectoryUploaderInterface {
  public:
@@ -85,7 +94,7 @@ LocalTrajectoryUploader::LocalTrajectoryUploader(
       batch_size_(batch_size) {
   std::chrono::system_clock::time_point deadline(
       std::chrono::system_clock::now() +
-      std::chrono::seconds(kConnectionTimeoutInSecond));
+      std::chrono::seconds(kConnectionTimeoutInSeconds));
   LOG(INFO) << "Connecting to uplink " << uplink_server_address;
   if (!client_channel_->WaitForConnected(deadline)) {
     LOG(FATAL) << "Failed to connect to " << uplink_server_address;
@@ -131,8 +140,9 @@ void LocalTrajectoryUploader::ProcessSendQueue() {
 
       if (batch_request.sensor_data_size() == batch_size_) {
         async_grpc::Client<handlers::AddSensorDataBatchSignature> client(
-            client_channel_, async_grpc::CreateUnlimitedConstantDelayStrategy(
-                                 common::FromSeconds(1)));
+            client_channel_, common::FromSeconds(kConnectionTimeoutInSeconds),
+            async_grpc::CreateUnlimitedConstantDelayStrategy(
+                common::FromSeconds(1), kUnrecoverableStatusCodes));
         CHECK(client.Write(batch_request));
         batch_request.clear_sensor_data();
       }

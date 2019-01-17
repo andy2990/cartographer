@@ -33,7 +33,11 @@ namespace cloud {
 namespace {
 
 using common::make_unique;
-constexpr int kConnectionTimeoutInSecond = 10;
+constexpr int kChannelTimeoutSeconds = 10;
+constexpr int kRetryBaseDelayMilliseconds = 500;
+constexpr float kRetryDelayFactor = 2.0;
+constexpr int kMaxRetries = 5;
+
 
 }  // namespace
 
@@ -44,7 +48,7 @@ MapBuilderStub::MapBuilderStub(const std::string& server_address)
   LOG(INFO) << "Connecting to SLAM process at " << server_address;
   std::chrono::system_clock::time_point deadline(
       std::chrono::system_clock::now() +
-      std::chrono::seconds(kConnectionTimeoutInSecond));
+      std::chrono::seconds(kChannelTimeoutSeconds));
   if (!client_channel_->WaitForConnected(deadline)) {
     LOG(FATAL) << "Failed to connect to " << server_address;
   }
@@ -60,8 +64,10 @@ int MapBuilderStub::AddTrajectoryBuilder(
     *request.add_expected_sensor_ids() = cloud::ToProto(sensor_id);
   }
   async_grpc::Client<handlers::AddTrajectorySignature> client(
-      client_channel_, async_grpc::CreateLimitedBackoffStrategy(
-                           common::FromMilliseconds(100), 2.f, 5));
+      client_channel_, common::FromSeconds(kChannelTimeoutSeconds),
+      async_grpc::CreateLimitedBackoffStrategy(
+          common::FromMilliseconds(kRetryBaseDelayMilliseconds),
+          kRetryDelayFactor, kMaxRetries));
   CHECK(client.Write(request));
 
   // Construct trajectory builder stub.
