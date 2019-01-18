@@ -37,6 +37,12 @@ namespace {
 
 using common::make_unique;
 
+enum CloudStatus {
+  RESTARTED,
+  RECONNECTED,
+  LOST
+};
+
 constexpr int kConnectionTimeoutInSeconds = 10;
 constexpr int kConnectionRecoveryTimeoutInSeconds = 60;
 constexpr int kTokenRefreshIntervalInSeconds = 60;
@@ -95,7 +101,7 @@ class LocalTrajectoryUploader : public LocalTrajectoryUploaderInterface {
   // Returns 'false' for failure.
   bool TranslateTrajectoryId(proto::SensorMetadata* sensor_metadata);
   grpc::Status RegisterTrajectory(int local_trajectory_id);
-  bool CheckCloudTrajectory(int local_trajectory_id);
+  CloudStatus CheckCloudTrajectory(int local_trajectory_id);
 
   std::shared_ptr<::grpc::Channel> client_channel_;
   int batch_size_;
@@ -159,8 +165,13 @@ void LocalTrajectoryUploader::TryRecovery() {
   // Check whether cloud has all the trajectories, otherwise the cloud might be restarted
   bool isCloudInterrupted = true;
   for(auto &entry : local_trajectory_id_to_trajectory_info_) {
-    if(!CheckCloudTrajectory(entry.first)) {
+    auto cloud_stat = CheckCloudTrajectory(entry.first);
+    if(cloud_stat  ==  RESTARTED) {
       isCloudInterrupted = false; break;
+    }
+    else if(cloud_stat == LOST) {
+      LOG(WARNING) << "Cloud still not recovered, waiting... ";
+      return;
     }
   }
 
@@ -292,7 +303,7 @@ grpc::Status LocalTrajectoryUploader::AddTrajectory(
   return RegisterTrajectory(local_trajectory_id);
 }
 
-bool LocalTrajectoryUploader::CheckCloudTrajectory(
+CloudStatus LocalTrajectoryUploader::CheckCloudTrajectory(
   int local_trajectory_id) {
     TrajectoryInfo & trajectory_info = local_trajectory_id_to_trajectory_info_.at(local_trajectory_id);
     proto::GetCloudTrajectoryStateRequest request;
@@ -303,9 +314,11 @@ bool LocalTrajectoryUploader::CheckCloudTrajectory(
     ::grpc::Status status;
     if(!client.Write(request, &status)) {
       LOG(ERROR) << "Failed to contact cloud. " << status.error_message();
-      return false;
+      return LOST;
     }
-    return (status.error_code() != ::grpc::NOT_FOUND);
+    if(status.error_code() == ::grpc::NOT_FOUND)
+      return RESTARTED;
+    else return RECONNECTED;
 }
 
 grpc::Status LocalTrajectoryUploader::RegisterTrajectory(
