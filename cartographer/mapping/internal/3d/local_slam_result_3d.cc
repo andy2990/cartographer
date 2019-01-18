@@ -33,7 +33,16 @@ void LocalSlamResult3D::AddToPoseGraph(int trajectory_id,
   CHECK(local_slam_result_data_.submaps(0).has_submap_3d());
   std::vector<std::shared_ptr<const mapping::Submap3D>> submaps;
   for (const auto& submap_proto : local_slam_result_data_.submaps()) {
-    submaps.push_back(submap_controller_->UpdateSubmap(submap_proto));
+    auto submap_ptr = submap_controller_->UpdateSubmap(submap_proto);
+    if (submap_ptr) {
+      submaps.push_back(submap_ptr);
+    } else {
+      LOG(INFO) << "Ignoring submap";
+    }
+  }
+  if (submaps.size() == 0) {
+    LOG(INFO) << "Ignoring node";
+    return;
   }
   static_cast<PoseGraph3D*>(pose_graph)
       ->AddNode(std::make_shared<const mapping::TrajectoryNode::Data>(

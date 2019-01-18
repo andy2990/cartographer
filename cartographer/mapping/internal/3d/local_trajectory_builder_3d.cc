@@ -75,7 +75,7 @@ LocalTrajectoryBuilder3D::AddRangeData(
   auto synchronized_data =
       range_data_collator_.AddRangeData(sensor_id, unsynchronized_data);
   if (synchronized_data.ranges.empty()) {
-    LOG(INFO) << "Range data collator filling buffer.";
+    //LOG(INFO) << "Range data collator filling buffer.";
     return nullptr;
   }
 

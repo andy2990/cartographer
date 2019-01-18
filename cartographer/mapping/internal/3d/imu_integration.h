@@ -46,7 +46,7 @@ IntegrateImuResult<T> IntegrateImu(
     IteratorType* const it) {
   CHECK_LE(start_time, end_time);
   CHECK(*it != imu_data.end());
-  CHECK_LE((*it)->time, start_time);
+  //CHECK_LE((*it)->time, start_time);
   if (std::next(*it) != imu_data.end()) {
     CHECK_GT(std::next(*it)->time, start_time);
   }
