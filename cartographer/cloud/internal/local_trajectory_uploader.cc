@@ -163,49 +163,60 @@ void LocalTrajectoryUploader::TryRecovery() {
       isCloudInterrupted = false; break;
     }
   }
-  
-  if(!isCloudInterrupted)
+
+  if (!isCloudInterrupted)
+  {
     LOG(INFO) << "Cloud was restarted. LocalTrajectoryUploader will try to recover with next submap.";
-
-  // Wind the sensor_data_queue forward to the next new submap.
-
-  while (true) {
-    if (shutting_down_) {
-      return;
+    // Wind the sensor_data_queue forward to the next new submap.
+    while (true)
+    {
+      if (shutting_down_)
+      {
+        return;
+      }
+      proto::SensorData *sensor_data =
+          send_queue_.PeekWithTimeout<proto::SensorData>(kPopTimeout);
+      if (sensor_data)
+      {
+        CHECK_GE(sensor_data->local_slam_result_data().submaps_size(), 0);
+        if (sensor_data->sensor_data_case() ==
+                proto::SensorData::kLocalSlamResultData &&
+            sensor_data->local_slam_result_data().submaps_size() > 0 &&
+            IsNewSubmap(sensor_data->local_slam_result_data().submaps(
+                sensor_data->local_slam_result_data().submaps_size() - 1)))
+        {
+          break;
+        }
+        else
+        {
+          send_queue_.Pop();
+        }
+      }
     }
-    proto::SensorData* sensor_data =
-        send_queue_.PeekWithTimeout<proto::SensorData>(kPopTimeout);
-    if (sensor_data) {
-      CHECK_GE(sensor_data->local_slam_result_data().submaps_size(), 0);
-      if (sensor_data->sensor_data_case() ==
-              proto::SensorData::kLocalSlamResultData &&
-          sensor_data->local_slam_result_data().submaps_size() > 0 &&
-          IsNewSubmap(sensor_data->local_slam_result_data().submaps(
-              sensor_data->local_slam_result_data().submaps_size() - 1))) {
-        break;
-      } else {
-        send_queue_.Pop();
+
+    // Because the trajectories may be interrupted on the uplink side, we can no
+    // longer upload to those.
+    for (auto &entry : local_trajectory_id_to_trajectory_info_)
+    {
+      entry.second.uplink_trajectory_id.reset();
+    }
+
+    // Attempt to recreate the trajectories.
+    for (const auto &entry : local_trajectory_id_to_trajectory_info_)
+    {
+      grpc::Status status = RegisterTrajectory(entry.first);
+      if (!status.ok())
+      {
+        LOG(ERROR) << "Failed to create trajectory. Aborting recovery attempt. "
+                   << status.error_message();
+        return;
       }
     }
   }
 
-  // Because the trajectories may be interrupted on the uplink side, we can no
-  // longer upload to those.
-  for (auto& entry : local_trajectory_id_to_trajectory_info_) {
-    entry.second.uplink_trajectory_id.reset();
-  }
-  // TODO(gaschler): If the uplink did not restart but only the connection was
-  // interrupted, this leaks trajectories in the uplink.
+  // Otherwise the failure status was caused by link interruption, simply re-upload
+  // all the data is sufficient
 
-  // Attempt to recreate the trajectories.
-  for (const auto& entry : local_trajectory_id_to_trajectory_info_) {
-    grpc::Status status = RegisterTrajectory(entry.first);
-    if (!status.ok()) {
-      LOG(ERROR) << "Failed to create trajectory. Aborting recovery attempt. "
-                 << status.error_message();
-      return;
-    }
-  }
   LOG(INFO) << "LocalTrajectoryUploader recovered.";
 }
 
