@@ -101,6 +101,11 @@ message FinishTrajectoryRequest {
   string client_id = 2;
 }
 
+message GetCloudTrajectoryStateRequest {
+  int32 trajectory_id = 1;
+  string client_id = 2;
+}
+
 message ReceiveLocalSlamResultsRequest {
   int32 trajectory_id = 1;
 }
@@ -259,6 +264,9 @@ service MapBuilderService {
   // Marks a trajectory corresponding to 'trajectory_id' as finished,
   // i.e. no further sensor data is expected.
   rpc FinishTrajectory(FinishTrajectoryRequest) returns (google.protobuf.Empty);
+
+  // Checks whether a trajectory with 'trajectory_id' and 'client_id' exists in cloud or not
+  rpc GetCloudTrajectoryState(GetCloudTrajectoryStateRequest) returns (google.protobuf.Empty);
 
   // Retrieves a single submap.
   rpc GetSubmap(GetSubmapRequest) returns (GetSubmapResponse);

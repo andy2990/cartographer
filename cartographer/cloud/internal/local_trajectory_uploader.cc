@@ -23,6 +23,7 @@
 #include "async_grpc/client.h"
 #include "cartographer/cloud/internal/handlers/add_sensor_data_batch_handler.h"
 #include "cartographer/cloud/internal/handlers/add_trajectory_handler.h"
+#include "cartographer/cloud/internal/handlers/get_cloud_trajectory_state_handler.h"
 #include "cartographer/cloud/internal/handlers/finish_trajectory_handler.h"
 #include "cartographer/cloud/internal/sensor/serialization.h"
 #include "cartographer/common/blocking_queue.h"
@@ -94,6 +95,7 @@ class LocalTrajectoryUploader : public LocalTrajectoryUploaderInterface {
   // Returns 'false' for failure.
   bool TranslateTrajectoryId(proto::SensorMetadata* sensor_metadata);
   grpc::Status RegisterTrajectory(int local_trajectory_id);
+  bool CheckCloudTrajectory(int local_trajectory_id);
 
   std::shared_ptr<::grpc::Channel> client_channel_;
   int batch_size_;
@@ -154,8 +156,19 @@ void LocalTrajectoryUploader::TryRecovery() {
   }
   LOG(INFO) << "Uplink channel ready, trying recovery.";
 
+  // Check whether cloud has all the trajectories, otherwise the cloud might be restarted
+  bool isCloudInterrupted = true;
+  for(auto &entry : local_trajectory_id_to_trajectory_info_) {
+    if(!CheckCloudTrajectory(entry.first)) {
+      isCloudInterrupted = false; break;
+    }
+  }
+  
+  if(!isCloudInterrupted)
+    LOG(INFO) << "Cloud was restarted. LocalTrajectoryUploader will try to recover with next submap.";
+
   // Wind the sensor_data_queue forward to the next new submap.
-  LOG(INFO) << "LocalTrajectoryUploader tries to recover with next submap.";
+
   while (true) {
     if (shutting_down_) {
       return;
@@ -266,6 +279,22 @@ grpc::Status LocalTrajectoryUploader::AddTrajectory(
       local_trajectory_id,
       TrajectoryInfo{{}, expected_sensor_ids, trajectory_options, client_id});
   return RegisterTrajectory(local_trajectory_id);
+}
+
+bool LocalTrajectoryUploader::CheckCloudTrajectory(
+  int local_trajectory_id) {
+    TrajectoryInfo & trajectory_info = local_trajectory_id_to_trajectory_info_.at(local_trajectory_id);
+    proto::GetCloudTrajectoryStateRequest request;
+    request.set_client_id(trajectory_info.client_id);
+    request.set_trajectory_id(trajectory_info.uplink_trajectory_id?trajectory_info.uplink_trajectory_id.value():-1);
+    async_grpc::Client<handlers::GetCloudTrajectoryStateSignature> client(
+      client_channel_, common::FromSeconds(kConnectionTimeoutInSeconds));
+    ::grpc::Status status;
+    if(!client.Write(request, &status)) {
+      LOG(ERROR) << "Failed to contact cloud. " << status.error_message();
+      return false;
+    }
+    return (status.error_code() != ::grpc::NOT_FOUND);
 }
 
 grpc::Status LocalTrajectoryUploader::RegisterTrajectory(
